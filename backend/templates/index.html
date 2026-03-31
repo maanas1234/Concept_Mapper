@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<input id="msg" placeholder="Type something">
+<button onclick="sendMessage()">Send</button>
+
+<p id="response"></p>
+
+<script>
+function sendMessage() {
+    const message = document.getElementById("msg").value;
+
+    fetch("/chat", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            user_input_field_name: message
+        })
+    })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById("response").innerText = data.reply;
+    });
+}
+</script>
+
+</body>
+</html>
