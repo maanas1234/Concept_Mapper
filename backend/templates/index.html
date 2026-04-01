@@ -84,7 +84,9 @@
         fetch("/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_input_field_name: message })
+            body: JSON.stringify({ user_input_field_name: message,
+                session_id:"user1"
+            })
         })
         .then(res => res.json())
         .then(data => {
