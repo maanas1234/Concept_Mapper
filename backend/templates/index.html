@@ -1,34 +1,110 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='styles/.css') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concept Mapper</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+    <nav class="top-nav">
+        <div class="brand">
+            <span class="brand-dot"></span>
+            Concept Mapper
+        </div>
+        <div class="nav-actions">
+            <button class="nav-btn">Docs</button>
+            <button class="nav-btn ghost">Changelog</button>
+        </div>
+    </nav>
 
-<input id="msg" placeholder="Type something">
-<button onclick="sendMessage()">Send</button>
+    <div class="page">
+        <section class="chat-panel">
+            <header class="chat-header">
+                <div class="title">
+                    <span class="dot"></span>
+                    Chat
+                </div>
+                <div class="sub">Ask anything; graph view on the right</div>
+            </header>
 
-<p id="response"></p>
+            <div id="messages" class="messages" aria-live="polite"></div>
 
-<script>
-function sendMessage() {
-    const message = document.getElementById("msg").value;
+            <div class="input-dock">
+                <div class="input-area">
+                    <textarea id="msg" placeholder="Type a message..." rows="2"></textarea>
+                    <button id="send-btn" onclick="sendMessage()">Send</button>
+                </div>
+                <div id="typing-indicator" class="typing-indicator hidden">AI is typing…</div>
+            </div>
+        </section>
 
-    fetch("/chat", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            user_input_field_name: message
+        <section class="canvas-panel">
+            <div class="canvas-placeholder">
+                <div class="glass">
+                    <p>3D canvas placeholder</p>
+                    <small>Space reserved for the graph view</small>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+    const messagesEl = document.getElementById("messages");
+    const inputEl = document.getElementById("msg");
+    const sendBtn = document.getElementById("send-btn");
+    const typingEl = document.getElementById("typing-indicator");
+    let isSending = false;
+
+    function appendMessage(role, text) {
+        const bubble = document.createElement("div");
+        bubble.className = `message ${role}`;
+        bubble.textContent = text;
+        messagesEl.appendChild(bubble);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function setLoading(state) {
+        isSending = state;
+        sendBtn.disabled = state;
+        typingEl.classList.toggle("hidden", !state);
+        sendBtn.textContent = state ? "Sending…" : "Send";
+    }
+
+    function sendMessage() {
+        if (isSending) return;
+        const message = (inputEl.value || "").trim();
+        if (!message) return;
+
+        appendMessage("user", message);
+        inputEl.value = "";
+        inputEl.focus();
+        setLoading(true);
+
+        fetch("/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_input_field_name: message })
         })
-    })
-    .then(res => res.json())
-    .then(data => {
-        document.getElementById("response").innerText = data.reply;
-    });
-}
-</script>
+        .then(res => res.json())
+        .then(data => {
+            const reply = data.reply ?? data.message ?? "Received.";
+            appendMessage("ai", reply);
+        })
+        .catch(err => {
+            appendMessage("ai", `Error: ${err.message || err}`);
+        })
+        .finally(() => {
+            setLoading(false);
+        });
+    }
 
+    inputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    </script>
 </body>
 </html>
