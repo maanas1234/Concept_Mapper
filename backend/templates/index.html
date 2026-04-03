@@ -50,11 +50,28 @@
         </section>
     </div>
 
+    <!-- Node tooltip -->
+    <div id="node-tooltip" style="
+        display:none; position:fixed;
+        background:rgba(15,15,25,0.92);
+        border:1px solid rgba(255,255,255,0.15);
+        border-radius:10px; padding:14px 18px;
+        color:#fff; font-family:sans-serif; font-size:13px;
+        max-width:240px; pointer-events:none; z-index:999;
+        backdrop-filter:blur(8px);
+        box-shadow:0 8px 32px rgba(0,0,0,0.4);
+    ">
+        <div id="tooltip-label" style="font-weight:700;font-size:15px;margin-bottom:6px;"></div>
+        <div id="tooltip-desc"  style="color:rgba(255,255,255,0.7);line-height:1.5;"></div>
+        <div id="tooltip-type"  style="margin-top:8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.5;"></div>
+    </div>
+
+    <!-- Chat logic -->
     <script>
     const messagesEl = document.getElementById("messages");
-    const inputEl = document.getElementById("msg");
-    const sendBtn = document.getElementById("send-btn");
-    const typingEl = document.getElementById("typing-indicator");
+    const inputEl    = document.getElementById("msg");
+    const sendBtn    = document.getElementById("send-btn");
+    const typingEl   = document.getElementById("typing-indicator");
     let isSending = false;
 
     function appendMessage(role, text) {
@@ -76,7 +93,6 @@
         if (isSending) return;
         const message = (inputEl.value || "").trim();
         if (!message) return;
-
         appendMessage("user", message);
         inputEl.value = "";
         inputEl.focus();
@@ -85,163 +101,202 @@
         fetch("/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_input_field_name: message,
-                session_id:"user1"
-            })
+            body: JSON.stringify({ user_input_field_name: message, session_id: "user1" })
         })
-        .then(res => res.json())
+        .then(r => r.json())
         .then(data => {
             if (data.type === "graph") {
-        appendMessage("ai", "Rendering your learning map...");
-
-        // for now just log
-        console.log("GRAPH DATA:", data.graph);
-
-        renderGraph(data.graph)
-        } 
-            else {
-        const reply = data.reply ?? data.message ?? "Received.";
-        appendMessage("ai", reply);
-        }
-        
+                appendMessage("ai", "Rendering your learning map...");
+                renderGraph(data.graph);
+            } else {
+                appendMessage("ai", data.reply ?? data.message ?? "Received.");
+            }
         })
-        .catch(err => {
-            appendMessage("ai", `Error: ${err.message || err}`);
-        })
-        .finally(() => {
-            setLoading(false);
-        });
+        .catch(err => appendMessage("ai", `Error: ${err.message || err}`))
+        .finally(() => setLoading(false));
     }
 
-    inputEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
+    inputEl.addEventListener("keydown", e => {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
     </script>
+
+    <!-- Three.js graph -->
     <script>
+    function getColor(type) {
+        const map = { foundation:0x4f8eff, core:0xa78bfa, advanced:0x34d399, project:0xfb923c };
+        return map[type] ?? 0xffffff;
+    }
+
     function renderGraph(data) {
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-    const nodeObjects = [];
-    const canvasPanel = document.querySelector(".canvas-panel");
-    canvasPanel.innerHTML = "";
-    sphere.userData = node; // 🔥 attach data
-    nodeObjects.push(sphere);
+        const canvasPanel = document.querySelector(".canvas-panel");
+        canvasPanel.innerHTML = "";
 
-    const scene = new THREE.Scene();
+        // Scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a14);
+        scene.fog = new THREE.FogExp2(0x0a0a14, 0.03);
 
-    const camera = new THREE.PerspectiveCamera(
-        75,
-        canvasPanel.clientWidth / canvasPanel.clientHeight,
-        0.1,
-        1000
-    );
-    camera.position.z = 15;
+        // Camera
+        const camera = new THREE.PerspectiveCamera(75, canvasPanel.clientWidth / canvasPanel.clientHeight, 0.1, 1000);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(canvasPanel.clientWidth, canvasPanel.clientHeight);
-    canvasPanel.appendChild(renderer.domElement);
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(canvasPanel.clientWidth, canvasPanel.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        canvasPanel.appendChild(renderer.domElement);
 
-    const nodeMap = {};
+        // Lights
+        const pl1 = new THREE.PointLight(0xffffff, 1.5, 100);
+        pl1.position.set(10, 10, 10);
+        scene.add(pl1);
+        const pl2 = new THREE.PointLight(0x4f8eff, 0.8, 80);
+        pl2.position.set(-10, -5, -10);
+        scene.add(pl2);
+        scene.add(new THREE.AmbientLight(0x404060, 0.6));
 
-    // 🔵 NODES
-    data.nodes.forEach(node => {
-        const geometry = new THREE.SphereGeometry(0.4, 32, 32);
+        // ── Manual orbit (replaces OrbitControls) ──────────────────────────
+        const orbit = {
+            isDragging: false,
+            prevX: 0, prevY: 0,
+            theta: 0,
+            phi: Math.PI / 2,
+            radius: 15,
+            autoRotate: true
+        };
 
-        const material = new THREE.MeshStandardMaterial({
-            color: getColor(node.type),
-            metalness: 0.3,
-            roughness: 0.4
+        function updateCamera() {
+            camera.position.x = orbit.radius * Math.sin(orbit.phi) * Math.sin(orbit.theta);
+            camera.position.y = orbit.radius * Math.cos(orbit.phi);
+            camera.position.z = orbit.radius * Math.sin(orbit.phi) * Math.cos(orbit.theta);
+            camera.lookAt(0, 0, 0);
+        }
+        updateCamera();
+
+        const el = renderer.domElement;
+
+        el.addEventListener("mousedown", e => {
+            orbit.isDragging = true;
+            orbit.autoRotate = false;
+            orbit.prevX = e.clientX;
+            orbit.prevY = e.clientY;
+        });
+        window.addEventListener("mouseup",   () => { orbit.isDragging = false; });
+        window.addEventListener("mousemove", e => {
+            if (!orbit.isDragging) return;
+            orbit.theta -= (e.clientX - orbit.prevX) * 0.005;
+            orbit.phi    = Math.max(0.1, Math.min(Math.PI - 0.1, orbit.phi - (e.clientY - orbit.prevY) * 0.005));
+            orbit.prevX  = e.clientX;
+            orbit.prevY  = e.clientY;
+            updateCamera();
+        });
+        el.addEventListener("wheel", e => {
+            orbit.radius = Math.max(4, Math.min(40, orbit.radius + e.deltaY * 0.02));
+            updateCamera();
+        });
+
+        // Raycaster
+        const raycaster   = new THREE.Raycaster();
+        const mouse       = new THREE.Vector2();
+        const nodeObjects = [];
+        const nodeMap     = {};
+
+        // Nodes
+        data.nodes.forEach((node, i) => {
+            const geo = new THREE.SphereGeometry(0.45, 32, 32);
+            const mat = new THREE.MeshStandardMaterial({
+                color: getColor(node.type),
+                metalness: 0.4, roughness: 0.3,
+                emissive: getColor(node.type),
+                emissiveIntensity: 0.15
             });
+            const sphere = new THREE.Mesh(geo, mat);
+            sphere.position.set(
+                node.x * 2.2,
+                node.y !== undefined ? node.y * 2.2 : (Math.random() - 0.5) * 5,
+                node.z !== undefined ? node.z * 2.2 : (Math.random() - 0.5) * 5
+            );
+            sphere.userData = node;
+            nodeObjects.push(sphere);
+            scene.add(sphere);
+            nodeMap[node.id] = sphere.position.clone();
 
-        const sphere = new THREE.Mesh(geometry, material);
-        sphere.position.set(
-            node.x * 2,
-            (Math.random() - 0.5) * 4,
-            (Math.random() - 0.5) * 4
-);
+            // Glow ring
+            const ring = new THREE.Mesh(
+                new THREE.RingGeometry(0.55, 0.65, 32),
+                new THREE.MeshBasicMaterial({
+                    color: getColor(node.type),
+                    side: THREE.DoubleSide,
+                    transparent: true, opacity: 0.3
+                })
+            );
+            ring.position.copy(sphere.position);
+            ring.lookAt(camera.position);
+            scene.add(ring);
+        });
 
-        scene.add(sphere);
+        // Edges
+        data.edges.forEach(edge => {
+            const from = nodeMap[edge.from], to = nodeMap[edge.to];
+            if (!from || !to) return;
+            scene.add(new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([from, to]),
+                new THREE.LineBasicMaterial({ color: 0x4a4a6a, transparent: true, opacity: 0.6 })
+            ));
+        });
 
-        nodeMap[node.id] = sphere.position;
-    });
+        // Tooltip
+        const tooltip      = document.getElementById("node-tooltip");
+        const tooltipLabel = document.getElementById("tooltip-label");
+        const tooltipDesc  = document.getElementById("tooltip-desc");
+        const tooltipType  = document.getElementById("tooltip-type");
 
-    // ⚪ EDGES
-    data.edges.forEach(edge => {
-        const points = [
-            nodeMap[edge.from],
-            nodeMap[edge.to]
-        ];
+        el.addEventListener("mousemove", e => {
+            if (orbit.isDragging) return;
+            const rect = el.getBoundingClientRect();
+            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(nodeObjects);
+            if (hits.length > 0) {
+                const node = hits[0].object.userData;
+                tooltipLabel.textContent = node.label;
+                tooltipDesc.textContent  = node.description;
+                tooltipType.textContent  = node.type;
+                tooltip.style.display = "block";
+                tooltip.style.left    = (e.clientX + 14) + "px";
+                tooltip.style.top     = (e.clientY - 10) + "px";
+                el.style.cursor = "pointer";
+                hits[0].object.material.emissiveIntensity = 0.6;
+            } else {
+                tooltip.style.display = "none";
+                el.style.cursor = "default";
+                nodeObjects.forEach(o => o.material.emissiveIntensity = 0.15);
+            }
+        });
 
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        // Resize
+        window.addEventListener("resize", () => {
+            camera.aspect = canvasPanel.clientWidth / canvasPanel.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvasPanel.clientWidth, canvasPanel.clientHeight);
+        });
 
-        const material = new THREE.LineBasicMaterial({ color: 0xffffff });
-
-        const line = new THREE.Line(geometry, material);
-        scene.add(line);
-    });
-
-    function animate() {
-        requestAnimationFrame(animate);
-        renderer.render(scene, camera);
-        requestAnimationFrame(animate);
-
-        controls.update(); // 🔥 IMPORTANT
-
-        renderer.render(scene, camera);
-        nodeObjects.forEach((obj, i) => {
-        obj.position.y += Math.sin(Date.now() * 0.001 + i) * 0.002;
-});
+        // Animate
+        function animate() {
+            requestAnimationFrame(animate);
+            if (orbit.autoRotate) {
+                orbit.theta += 0.003;
+                updateCamera();
+            }
+            const t = Date.now() * 0.001;
+            nodeObjects.forEach((obj, i) => {
+                obj.position.y += Math.sin(t + i * 1.3) * 0.002;
+            });
+            renderer.render(scene, camera);
+        }
+        animate();
     }
-
-    animate();
-}
-function getColor(type) {
-    switch (type) {
-        case "foundation": return 0x4f8eff;
-        case "core": return 0xa78bfa;
-        case "advanced": return 0x34d399;
-        case "project": return 0xfb923c;
-        default: return 0xffffff;
-    }
-}
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.enableZoom = true;
-controls.enablePan = true;
-
-renderer.domElement.addEventListener("click", (event) => {
-    const rect = renderer.domElement.getBoundingClientRect();
-
-    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, camera);
-
-    const intersects = raycaster.intersectObjects(nodeObjects);
-
-    if (intersects.length > 0) {
-        const node = intersects[0].object.userData;
-
-        showNodeInfo(node); // 🔥 call UI
-    }
-});
-function showNodeInfo(node) {
-    alert(
-        `${node.label}\n\n${node.description}\n\nType: ${node.type}`
-    );
-}
-const light = new THREE.PointLight(0xffffff, 1);
-light.position.set(10, 10, 10);
-scene.add(light);
-
-const ambient = new THREE.AmbientLight(0x404040);
-scene.add(ambient);
-
     </script>
 </body>
 </html>
