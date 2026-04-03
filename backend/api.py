@@ -10,9 +10,9 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="minimax/minimax-m2.5:free",
+    model="openai/gpt-oss-120b:free:online",
     messages=[
-        {"role": "user", "content": "Say hello"}
+        {"role": "user", "content": "Tell me the latest news of claude code?Summarize in 3 lines."}
     ]
 )
 

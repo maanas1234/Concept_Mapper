@@ -38,7 +38,7 @@ def chat():
         # call AI with FULL history
         completion = client.chat.completions.create(
 
-            model="openai/gpt-oss-120b:free",
+            model="openai/gpt-oss-120b:free:online",
             messages=[
                 {
                     "role": "system",
@@ -62,22 +62,25 @@ def chat():
                         - DO NOT include explanations.
                         - DO NOT use markdown (no ```).
                         - Output must start with { and end with }.
+                        - Find the best resources out there.
 
                         ---------------------
                         STRICT JSON FORMAT
                         ---------------------
                         {
-                        "type":"graph"
+                        "type":"graph",
                         "nodes": [
-                            {
-                            "id": "string",
-                            "label": "short name",
-                            "description": "2-3 lines",
-                            "type": "foundation/core/advanced/project",
-                            "x": number,
-                            "y": number,
-                            "z": number
-                            }
+                         {
+                             "id": "string",
+                             "label": "short name",
+                             "description": "2-3 lines about this topic",
+                             "type": "foundation/core/advanced/project",
+                             "tasks": ["specific thing to do 1", "specific thing to do 2"],
+                             "resources": ["Book/course name", "YouTube channel", "website URL"],
+                             "x": number,
+                             "y": number,
+                             "z": number
+                         }
                         ],
                         "edges": [
                             {
@@ -95,34 +98,40 @@ def chat():
 
                         Assistant:
                         {
-                        "type":"graph"
+                        "type":"graph",
                         "nodes": [
+                                {
+                            "id": "string",
+                            "label": "short name",
+                            "description": "2-3 lines about this topic",
+                            "type": "foundation/core/advanced/project",
+                            "tasks": ["specific thing to do 1", "specific thing to do 2"],
+                            "resources": ["Book/course name", "YouTube channel", "website URL"],
+                            "x": number,
+                            "y": number,
+                            "z": number
+                        },
+                        {
+                            "id": "string",
+                            "label": "short name",
+                            "description": "2-3 lines about this topic",
+                            "type": "foundation/core/advanced/project",
+                            "tasks": ["specific thing to do 1", "specific thing to do 2"],
+                            "resources": ["Book/course name", "YouTube channel", "website URL"],
+                            "x": number,
+                            "y": number,
+                            "z": number
+                        },
                             {
-                            "id": "1",
-                            "label": "Python Basics",
-                            "description": "Variables, loops, functions and syntax fundamentals.",
-                            "type": "foundation",
-                            "x": 0,
-                            "y": 0,
-                            "z": 0
-                            },
-                            {
-                            "id": "2",
-                            "label": "Data Structures",
-                            "description": "Lists, dictionaries, sets and their usage.",
-                            "type": "core",
-                            "x": 2,
-                            "y": 1,
-                            "z": 0
-                            },
-                            {
-                            "id": "3",
-                            "label": "NumPy & Pandas",
-                            "description": "Data handling and numerical computation.",
-                            "type": "core",
-                            "x": 4,
-                            "y": 2,
-                            "z": 0
+                                "id": "string",
+                                "label": "short name",
+                                "description": "2-3 lines about this topic",
+                                "type": "foundation/core/advanced/project",
+                                "tasks": ["specific thing to do 1", "specific thing to do 2"],
+                                "resources": ["Book/course name", "YouTube channel", "website URL"],
+                                "x": number,
+                                "y": number,
+                                "z": number
                             }
                         ],
                         "edges": [
@@ -169,11 +178,13 @@ def chat():
                 "type": "text",
                 "reply": reply
             })
+        
 
     except Exception as e:
         print("ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
+    
 
 if __name__ == "__main__":
     app.run(debug=True)

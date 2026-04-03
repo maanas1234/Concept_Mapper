@@ -22,15 +22,10 @@
     <div class="page">
         <section class="chat-panel">
             <header class="chat-header">
-                <div class="title">
-                    <span class="dot"></span>
-                    Chat
-                </div>
+                <div class="title"><span class="dot"></span>Chat</div>
                 <div class="sub">Ask anything; graph view on the right</div>
             </header>
-
             <div id="messages" class="messages" aria-live="polite"></div>
-
             <div class="input-dock">
                 <div class="input-area">
                     <textarea id="msg" placeholder="Type a message..." rows="2"></textarea>
@@ -40,33 +35,63 @@
             </div>
         </section>
 
-        <section class="canvas-panel">
-            <div class="canvas-placeholder">
-                <div class="glass">
-                    <p>3D canvas placeholder</p>
-                    <small>Space reserved for the graph view</small>
-                </div>
-            </div>
-        </section>
+        <section class="canvas-panel"></section>
     </div>
 
-    <!-- Node tooltip -->
+    <!-- Rich node side panel -->
+    <div id="node-panel" style="
+        display:none; position:fixed; right:0; top:0;
+        width:280px; height:100vh;
+        background:rgba(10,10,20,0.96);
+        border-left:1px solid rgba(255,255,255,0.1);
+        padding:24px 20px; color:#fff;
+        font-family:sans-serif; z-index:998;
+        overflow-y:auto;
+        backdrop-filter:blur(12px);
+        box-shadow:-8px 0 32px rgba(0,0,0,0.5);
+    ">
+        <button onclick="document.getElementById('node-panel').style.display='none'" style="
+            float:right; background:rgba(255,255,255,0.1);
+            border:none; color:#fff; border-radius:6px;
+            padding:4px 10px; cursor:pointer; font-size:13px; margin-bottom:8px;
+        ">✕</button>
+        <div id="panel-type"  style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;opacity:.5;margin-bottom:8px;clear:both;"></div>
+        <div id="panel-label" style="font-size:20px;font-weight:700;margin-bottom:10px;line-height:1.3;"></div>
+        <div id="panel-desc"  style="font-size:13px;color:rgba(255,255,255,0.7);line-height:1.6;margin-bottom:20px;"></div>
+
+        <div id="panel-tasks-section" style="margin-bottom:16px;">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;opacity:.4;margin-bottom:8px;">What to do</div>
+            <ul id="panel-tasks" style="margin:0;padding-left:16px;font-size:13px;color:rgba(255,255,255,0.75);line-height:1.9;"></ul>
+        </div>
+
+        <div id="panel-resources-section">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;opacity:.4;margin-bottom:8px;">Resources</div>
+            <ul id="panel-resources" style="margin:0;padding-left:16px;font-size:13px;color:#4f8eff;line-height:1.9;"></ul>
+        </div>
+    </div>
+
+    <!-- Hover tooltip -->
     <div id="node-tooltip" style="
         display:none; position:fixed;
-        background:rgba(15,15,25,0.92);
-        border:1px solid rgba(255,255,255,0.15);
-        border-radius:10px; padding:14px 18px;
+        background:rgba(15,15,25,0.9);
+        border:1px solid rgba(255,255,255,0.12);
+        border-radius:8px; padding:8px 14px;
         color:#fff; font-family:sans-serif; font-size:13px;
-        max-width:240px; pointer-events:none; z-index:999;
+        pointer-events:none; z-index:999;
         backdrop-filter:blur(8px);
-        box-shadow:0 8px 32px rgba(0,0,0,0.4);
     ">
-        <div id="tooltip-label" style="font-weight:700;font-size:15px;margin-bottom:6px;"></div>
-        <div id="tooltip-desc"  style="color:rgba(255,255,255,0.7);line-height:1.5;"></div>
-        <div id="tooltip-type"  style="margin-top:8px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.5;"></div>
+        <span id="tooltip-label"></span>
+        <span style="font-size:11px;opacity:.4;margin-left:6px;">click for details</span>
     </div>
 
-    <!-- Chat logic -->
+    <!-- Camera hint -->
+    <div id="cam-hint" style="
+        display:none; position:fixed; bottom:16px; right:16px;
+        font-family:sans-serif; font-size:11px;
+        color:rgba(255,255,255,0.22); z-index:10; pointer-events:none;
+    ">Left drag: rotate &nbsp;·&nbsp; Right drag: pan &nbsp;·&nbsp; Scroll: zoom</div>
+
+    <!-- Chat -->
     <script>
     const messagesEl = document.getElementById("messages");
     const inputEl    = document.getElementById("msg");
@@ -75,33 +100,29 @@
     let isSending = false;
 
     function appendMessage(role, text) {
-        const bubble = document.createElement("div");
-        bubble.className = `message ${role}`;
-        bubble.textContent = text;
-        messagesEl.appendChild(bubble);
+        const b = document.createElement("div");
+        b.className = `message ${role}`;
+        b.textContent = text;
+        messagesEl.appendChild(b);
         messagesEl.scrollTop = messagesEl.scrollHeight;
     }
-
     function setLoading(state) {
         isSending = state;
         sendBtn.disabled = state;
         typingEl.classList.toggle("hidden", !state);
         sendBtn.textContent = state ? "Sending…" : "Send";
     }
-
     function sendMessage() {
         if (isSending) return;
         const message = (inputEl.value || "").trim();
         if (!message) return;
         appendMessage("user", message);
-        inputEl.value = "";
-        inputEl.focus();
+        inputEl.value = ""; inputEl.focus();
         setLoading(true);
-
         fetch("/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_input_field_name: message, session_id: "user1" })
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({ user_input_field_name: message, session_id:"user1" })
         })
         .then(r => r.json())
         .then(data => {
@@ -115,27 +136,36 @@
         .catch(err => appendMessage("ai", `Error: ${err.message || err}`))
         .finally(() => setLoading(false));
     }
-
     inputEl.addEventListener("keydown", e => {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
     </script>
 
-    <!-- Three.js graph -->
+    <!-- Three.js -->
     <script>
     function getColor(type) {
-        const map = { foundation:0x4f8eff, core:0xa78bfa, advanced:0x34d399, project:0xfb923c };
-        return map[type] ?? 0xffffff;
+        return { foundation:0x4f8eff, core:0xa78bfa, advanced:0x34d399, project:0xfb923c }[type] ?? 0xffffff;
     }
 
     function renderGraph(data) {
         const canvasPanel = document.querySelector(".canvas-panel");
         canvasPanel.innerHTML = "";
+        document.getElementById("cam-hint").style.display = "block";
+
+        // Spread nodes in 3D if AI returned flat data
+        const allFlat = data.nodes.every(n => !n.y && !n.z);
+        if (allFlat) {
+            data.nodes = data.nodes.map(n => ({
+                ...n,
+                y: (Math.random() - 0.5) * 8,
+                z: (Math.random() - 0.5) * 8
+            }));
+        }
 
         // Scene
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0a0a14);
-        scene.fog = new THREE.FogExp2(0x0a0a14, 0.03);
+        scene.fog = new THREE.FogExp2(0x0a0a14, 0.022);
 
         // Camera
         const camera = new THREE.PerspectiveCamera(75, canvasPanel.clientWidth / canvasPanel.clientHeight, 0.1, 1000);
@@ -145,77 +175,77 @@
         renderer.setSize(canvasPanel.clientWidth, canvasPanel.clientHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         canvasPanel.appendChild(renderer.domElement);
+        renderer.domElement.addEventListener("contextmenu", e => e.preventDefault());
 
         // Lights
-        const pl1 = new THREE.PointLight(0xffffff, 1.5, 100);
-        pl1.position.set(10, 10, 10);
-        scene.add(pl1);
-        const pl2 = new THREE.PointLight(0x4f8eff, 0.8, 80);
-        pl2.position.set(-10, -5, -10);
-        scene.add(pl2);
+        const pl1 = new THREE.PointLight(0xffffff, 1.5, 100); pl1.position.set(10,10,10); scene.add(pl1);
+        const pl2 = new THREE.PointLight(0x4f8eff, 0.8, 80);  pl2.position.set(-10,-5,-10); scene.add(pl2);
         scene.add(new THREE.AmbientLight(0x404060, 0.6));
 
-        // ── Manual orbit (replaces OrbitControls) ──────────────────────────
-        const orbit = {
-            isDragging: false,
-            prevX: 0, prevY: 0,
-            theta: 0,
-            phi: Math.PI / 2,
-            radius: 15,
-            autoRotate: true
+        // ── Camera state ──────────────────────────────────────────────────
+        const cam = {
+            theta: 0, phi: Math.PI / 2, radius: 18,
+            panX: 0,  panY: 0,
+            autoRotate: true,
+            dragging: false, button: 0, px: 0, py: 0
         };
 
         function updateCamera() {
-            camera.position.x = orbit.radius * Math.sin(orbit.phi) * Math.sin(orbit.theta);
-            camera.position.y = orbit.radius * Math.cos(orbit.phi);
-            camera.position.z = orbit.radius * Math.sin(orbit.phi) * Math.cos(orbit.theta);
-            camera.lookAt(0, 0, 0);
+            camera.position.set(
+                cam.panX + cam.radius * Math.sin(cam.phi) * Math.sin(cam.theta),
+                cam.panY + cam.radius * Math.cos(cam.phi),
+                         cam.radius * Math.sin(cam.phi) * Math.cos(cam.theta)
+            );
+            camera.lookAt(cam.panX, cam.panY, 0);
         }
         updateCamera();
 
         const el = renderer.domElement;
 
         el.addEventListener("mousedown", e => {
-            orbit.isDragging = true;
-            orbit.autoRotate = false;
-            orbit.prevX = e.clientX;
-            orbit.prevY = e.clientY;
+            cam.dragging = true;
+            cam.button   = e.button;
+            cam.px = e.clientX; cam.py = e.clientY;
+            if (e.button === 0) cam.autoRotate = false;
         });
-        window.addEventListener("mouseup",   () => { orbit.isDragging = false; });
+        window.addEventListener("mouseup",   () => cam.dragging = false);
         window.addEventListener("mousemove", e => {
-            if (!orbit.isDragging) return;
-            orbit.theta -= (e.clientX - orbit.prevX) * 0.005;
-            orbit.phi    = Math.max(0.1, Math.min(Math.PI - 0.1, orbit.phi - (e.clientY - orbit.prevY) * 0.005));
-            orbit.prevX  = e.clientX;
-            orbit.prevY  = e.clientY;
+            if (!cam.dragging) return;
+            const dx = e.clientX - cam.px;
+            const dy = e.clientY - cam.py;
+            cam.px = e.clientX; cam.py = e.clientY;
+            if (cam.button === 0) {
+                // Rotate
+                cam.theta -= dx * 0.005;
+                cam.phi    = Math.max(0.1, Math.min(Math.PI - 0.1, cam.phi - dy * 0.005));
+            } else if (cam.button === 2) {
+                // Pan
+                const s = cam.radius * 0.0008;
+                cam.panX -= dx * s;
+                cam.panY += dy * s;
+            }
             updateCamera();
         });
         el.addEventListener("wheel", e => {
-            orbit.radius = Math.max(4, Math.min(40, orbit.radius + e.deltaY * 0.02));
+            cam.radius = Math.max(4, Math.min(50, cam.radius + e.deltaY * 0.03));
             updateCamera();
         });
 
-        // Raycaster
+        // Nodes + edges
         const raycaster   = new THREE.Raycaster();
-        const mouse       = new THREE.Vector2();
+        const mousePick   = new THREE.Vector2();
         const nodeObjects = [];
         const nodeMap     = {};
 
-        // Nodes
-        data.nodes.forEach((node, i) => {
-            const geo = new THREE.SphereGeometry(0.45, 32, 32);
-            const mat = new THREE.MeshStandardMaterial({
-                color: getColor(node.type),
-                metalness: 0.4, roughness: 0.3,
-                emissive: getColor(node.type),
-                emissiveIntensity: 0.15
-            });
-            const sphere = new THREE.Mesh(geo, mat);
-            sphere.position.set(
-                node.x * 2.2,
-                node.y !== undefined ? node.y * 2.2 : (Math.random() - 0.5) * 5,
-                node.z !== undefined ? node.z * 2.2 : (Math.random() - 0.5) * 5
+        data.nodes.forEach(node => {
+            const sphere = new THREE.Mesh(
+                new THREE.SphereGeometry(0.45, 32, 32),
+                new THREE.MeshStandardMaterial({
+                    color: getColor(node.type), metalness:0.4, roughness:0.3,
+                    emissive: getColor(node.type), emissiveIntensity: 0.15
+                })
             );
+            sphere.position.set(node.x * 2.2, node.y * 2.2, node.z * 2.2);
             sphere.userData = node;
             nodeObjects.push(sphere);
             scene.add(sphere);
@@ -224,55 +254,81 @@
             // Glow ring
             const ring = new THREE.Mesh(
                 new THREE.RingGeometry(0.55, 0.65, 32),
-                new THREE.MeshBasicMaterial({
-                    color: getColor(node.type),
-                    side: THREE.DoubleSide,
-                    transparent: true, opacity: 0.3
-                })
+                new THREE.MeshBasicMaterial({ color: getColor(node.type), side:THREE.DoubleSide, transparent:true, opacity:0.3 })
             );
             ring.position.copy(sphere.position);
             ring.lookAt(camera.position);
             scene.add(ring);
         });
 
-        // Edges
         data.edges.forEach(edge => {
             const from = nodeMap[edge.from], to = nodeMap[edge.to];
             if (!from || !to) return;
             scene.add(new THREE.Line(
                 new THREE.BufferGeometry().setFromPoints([from, to]),
-                new THREE.LineBasicMaterial({ color: 0x4a4a6a, transparent: true, opacity: 0.6 })
+                new THREE.LineBasicMaterial({ color:0x4a4a6a, transparent:true, opacity:0.6 })
             ));
         });
 
-        // Tooltip
+        // Tooltip (hover)
         const tooltip      = document.getElementById("node-tooltip");
         const tooltipLabel = document.getElementById("tooltip-label");
-        const tooltipDesc  = document.getElementById("tooltip-desc");
-        const tooltipType  = document.getElementById("tooltip-type");
+
+        // Side panel (click)
+        const panel    = document.getElementById("node-panel");
+        const pType    = document.getElementById("panel-type");
+        const pLabel   = document.getElementById("panel-label");
+        const pDesc    = document.getElementById("panel-desc");
+        const pTasks   = document.getElementById("panel-tasks");
+        const pRes     = document.getElementById("panel-resources");
+        const pTaskSec = document.getElementById("panel-tasks-section");
+        const pResSec  = document.getElementById("panel-resources-section");
 
         el.addEventListener("mousemove", e => {
-            if (orbit.isDragging) return;
+            if (cam.dragging) { tooltip.style.display = "none"; return; }
             const rect = el.getBoundingClientRect();
-            mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
-            mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
+            mousePick.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mousePick.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mousePick, camera);
             const hits = raycaster.intersectObjects(nodeObjects);
             if (hits.length > 0) {
-                const node = hits[0].object.userData;
-                tooltipLabel.textContent = node.label;
-                tooltipDesc.textContent  = node.description;
-                tooltipType.textContent  = node.type;
+                tooltipLabel.textContent = hits[0].object.userData.label;
                 tooltip.style.display = "block";
-                tooltip.style.left    = (e.clientX + 14) + "px";
-                tooltip.style.top     = (e.clientY - 10) + "px";
+                tooltip.style.left = (e.clientX + 14) + "px";
+                tooltip.style.top  = (e.clientY - 10) + "px";
                 el.style.cursor = "pointer";
-                hits[0].object.material.emissiveIntensity = 0.6;
+                hits[0].object.material.emissiveIntensity = 0.65;
             } else {
                 tooltip.style.display = "none";
                 el.style.cursor = "default";
                 nodeObjects.forEach(o => o.material.emissiveIntensity = 0.15);
             }
+        });
+
+        el.addEventListener("click", e => {
+            const rect = el.getBoundingClientRect();
+            mousePick.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+            mousePick.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mousePick, camera);
+            const hits = raycaster.intersectObjects(nodeObjects);
+            if (hits.length === 0) return;
+            const node = hits[0].object.userData;
+
+            pType.textContent  = node.type;
+            pLabel.textContent = node.label;
+            pDesc.textContent  = node.description;
+
+            pTasks.innerHTML = "";
+            const tasks = Array.isArray(node.tasks) ? node.tasks : [];
+            tasks.forEach(t => { const li = document.createElement("li"); li.textContent = t; pTasks.appendChild(li); });
+            pTaskSec.style.display = tasks.length ? "block" : "none";
+
+            pRes.innerHTML = "";
+            const resources = Array.isArray(node.resources) ? node.resources : [];
+            resources.forEach(r => { const li = document.createElement("li"); li.textContent = r; pRes.appendChild(li); });
+            pResSec.style.display = resources.length ? "block" : "none";
+
+            panel.style.display = "block";
         });
 
         // Resize
@@ -285,14 +341,9 @@
         // Animate
         function animate() {
             requestAnimationFrame(animate);
-            if (orbit.autoRotate) {
-                orbit.theta += 0.003;
-                updateCamera();
-            }
+            if (cam.autoRotate) { cam.theta += 0.003; updateCamera(); }
             const t = Date.now() * 0.001;
-            nodeObjects.forEach((obj, i) => {
-                obj.position.y += Math.sin(t + i * 1.3) * 0.002;
-            });
+            nodeObjects.forEach((obj, i) => { obj.position.y += Math.sin(t + i * 1.3) * 0.002; });
             renderer.render(scene, camera);
         }
         animate();
