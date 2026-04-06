@@ -42,7 +42,7 @@
     <div id="node-panel" style="
         display:none; position:fixed; right:0; top:0;
         width:280px; height:100vh;
-        background:rgba(10,10,20,0.96);
+        background:rgba(17,24,39,0.97);
         border-left:1px solid rgba(255,255,255,0.1);
         padding:24px 20px; color:#fff;
         font-family:sans-serif; z-index:998;
@@ -152,20 +152,32 @@
         canvasPanel.innerHTML = "";
         document.getElementById("cam-hint").style.display = "block";
 
-        // Spread nodes in 3D if AI returned flat data
-        const allFlat = data.nodes.every(n => !n.y && !n.z);
-        if (allFlat) {
-            data.nodes = data.nodes.map(n => ({
-                ...n,
-                y: (Math.random() - 0.5) * 8,
-                z: (Math.random() - 0.5) * 8
-            }));
+        // ── Normalize node positions to always fit in view ─────────────
+        // The AI gives arbitrary coords — we remap them to a fixed range
+        // so nodes are always visible regardless of what values it returns.
+        const xs = data.nodes.map(n => n.x || 0);
+        const ys = data.nodes.map(n => n.y || 0);
+        const zs = data.nodes.map(n => n.z || 0);
+        const minX = Math.min(...xs), maxX = Math.max(...xs);
+        const minY = Math.min(...ys), maxY = Math.max(...ys);
+        const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+
+        function remap(val, min, max, outRange) {
+            if (max === min) return (Math.random() - 0.5) * outRange;
+            return ((val - min) / (max - min) - 0.5) * outRange;
         }
+
+        data.nodes = data.nodes.map(n => ({
+            ...n,
+            nx: remap(n.x || 0, minX, maxX, 12),  // spread across 12 units
+            ny: remap(n.y || 0, minY, maxY, 8) + (Math.random() - 0.5) * 2,
+            nz: remap(n.z || 0, minZ, maxZ, 8) + (Math.random() - 0.5) * 3,
+        }));
 
         // Scene
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a0a14);
-        scene.fog = new THREE.FogExp2(0x0a0a14, 0.022);
+        scene.background = new THREE.Color(0x111827); // dark blue-grey, easier on eyes
+        scene.fog = new THREE.FogExp2(0x111827, 0.018);
 
         // Camera
         const camera = new THREE.PerspectiveCamera(75, canvasPanel.clientWidth / canvasPanel.clientHeight, 0.1, 1000);
@@ -239,13 +251,13 @@
 
         data.nodes.forEach(node => {
             const sphere = new THREE.Mesh(
-                new THREE.SphereGeometry(0.45, 32, 32),
+                new THREE.SphereGeometry(0.75, 32, 32),
                 new THREE.MeshStandardMaterial({
-                    color: getColor(node.type), metalness:0.4, roughness:0.3,
-                    emissive: getColor(node.type), emissiveIntensity: 0.15
+                    color: getColor(node.type), metalness:0.3, roughness:0.25,
+                    emissive: getColor(node.type), emissiveIntensity: 0.45
                 })
             );
-            sphere.position.set(node.x * 2.2, node.y * 2.2, node.z * 2.2);
+            sphere.position.set(node.nx, node.ny, node.nz);
             sphere.userData = node;
             nodeObjects.push(sphere);
             scene.add(sphere);
@@ -253,8 +265,8 @@
 
             // Glow ring
             const ring = new THREE.Mesh(
-                new THREE.RingGeometry(0.55, 0.65, 32),
-                new THREE.MeshBasicMaterial({ color: getColor(node.type), side:THREE.DoubleSide, transparent:true, opacity:0.3 })
+                new THREE.RingGeometry(0.9, 1.05, 32),
+                new THREE.MeshBasicMaterial({ color: getColor(node.type), side:THREE.DoubleSide, transparent:true, opacity:0.35 })
             );
             ring.position.copy(sphere.position);
             ring.lookAt(camera.position);
@@ -297,11 +309,11 @@
                 tooltip.style.left = (e.clientX + 14) + "px";
                 tooltip.style.top  = (e.clientY - 10) + "px";
                 el.style.cursor = "pointer";
-                hits[0].object.material.emissiveIntensity = 0.65;
+                hits[0].object.material.emissiveIntensity = 0.9;
             } else {
                 tooltip.style.display = "none";
                 el.style.cursor = "default";
-                nodeObjects.forEach(o => o.material.emissiveIntensity = 0.15);
+                nodeObjects.forEach(o => o.material.emissiveIntensity = 0.45);
             }
         });
 

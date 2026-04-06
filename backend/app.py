@@ -10,7 +10,7 @@ client = OpenAI( base_url="https://openrouter.ai/api/v1",
     default_headers={
         "HTTP-Referer": "http://localhost:5000",
         "X-OpenRouter-Title": "Concept Mapper"
-    }
+    }  
     )
 app = Flask(__name__)
 conversation_memory = {}
