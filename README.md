@@ -141,38 +141,11 @@ Node types and their colors:
 | `advanced` | Green `#34d399` |
 | `project` | Orange `#fb923c` |
 
----
 
-## Key Design Decisions
-
-**Why manual orbit controls instead of OrbitControls.js?**
-OrbitControls was removed from the Three.js CDN bundle in r125+. Rather than fighting import maps, the camera orbit is implemented manually using spherical coordinates (~25 lines), giving full control with zero dependencies.
-
-**Why normalize node positions?**
-The AI returns arbitrary x/y/z values. Rather than multiplying blindly (which sent nodes off-screen), positions are remapped to a fixed bounding box so the graph always fits in view regardless of what the model returns.
-
-**Why strip the `:online` suffix from the model?**
-The online variant triggers web search, causing the model to fetch entire articles (4000+ tokens per request). Using training knowledge for resources keeps costs low and responses fast.
-
----
-
-## Roadmap
-
-- [ ] Export learning path as PDF
-- [ ] Save and reload past graphs
-- [ ] Multi-session support (currently hardcoded to `user1`)
-- [ ] Node labels rendered in 3D space (Three.js Sprites)
-- [ ] Dark/light theme toggle
-
----
 
 ## Author
 
-**Manas Kiyagi**
-BTech Information Technology, VIT Vellore
-
-[LinkedIn](https://linkedin.com/in/yourprofile) · [GitHub](https://github.com/yourusername)
-
+**Maanas Tyagi**
 ---
 
 ## License
