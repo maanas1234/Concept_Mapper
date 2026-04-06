@@ -147,6 +147,60 @@
         return { foundation:0x4f8eff, core:0xa78bfa, advanced:0x34d399, project:0xfb923c }[type] ?? 0xffffff;
     }
 
+    // ── Procedural node texture ───────────────────────────────────────────
+    // Generates a canvas texture with noise-like detail so nodes look
+    // like planets rather than plain coloured balls.
+    function makeNodeTexture(hexColor) {
+        const size = 256;
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext("2d");
+
+        // Base colour
+        const r = (hexColor >> 16) & 0xff;
+        const g = (hexColor >> 8)  & 0xff;
+        const b =  hexColor        & 0xff;
+
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(0, 0, size, size);
+
+        // Latitude bands (lighter stripe)
+        const grad = ctx.createLinearGradient(0, 0, 0, size);
+        grad.addColorStop(0,    `rgba(255,255,255,0.08)`);
+        grad.addColorStop(0.35, `rgba(255,255,255,0.18)`);
+        grad.addColorStop(0.5,  `rgba(255,255,255,0.04)`);
+        grad.addColorStop(0.65, `rgba(255,255,255,0.14)`);
+        grad.addColorStop(1,    `rgba(0,0,0,0.15)`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, size, size);
+
+        // Noise blobs — give it that planet surface feel
+        const seed = hexColor; // deterministic per colour
+        for (let i = 0; i < 120; i++) {
+            const px = ((Math.sin(seed * i * 0.0013) * 0.5 + 0.5)) * size;
+            const py = ((Math.cos(seed * i * 0.0017) * 0.5 + 0.5)) * size;
+            const radius = 4 + (i % 7) * 3;
+            const alpha  = 0.04 + (i % 5) * 0.015;
+            const light  = i % 2 === 0;
+            ctx.beginPath();
+            ctx.arc(px, py, radius, 0, Math.PI * 2);
+            ctx.fillStyle = light
+                ? `rgba(255,255,255,${alpha})`
+                : `rgba(0,0,0,${alpha * 1.5})`;
+            ctx.fill();
+        }
+
+        // Subtle vignette at poles
+        const vign = ctx.createRadialGradient(size/2, size/2, size*0.3, size/2, size/2, size*0.7);
+        vign.addColorStop(0, "rgba(0,0,0,0)");
+        vign.addColorStop(1, "rgba(0,0,0,0.3)");
+        ctx.fillStyle = vign;
+        ctx.fillRect(0, 0, size, size);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        return tex;
+    }
+
     function renderGraph(data) {
         const canvasPanel = document.querySelector(".canvas-panel");
         canvasPanel.innerHTML = "";
@@ -169,9 +223,9 @@
 
         data.nodes = data.nodes.map(n => ({
             ...n,
-            nx: remap(n.x || 0, minX, maxX, 12),  // spread across 12 units
-            ny: remap(n.y || 0, minY, maxY, 8) + (Math.random() - 0.5) * 2,
-            nz: remap(n.z || 0, minZ, maxZ, 8) + (Math.random() - 0.5) * 3,
+            nx: remap(n.x || 0, minX, maxX, 22),  // was 12 — wider spread
+            ny: remap(n.y || 0, minY, maxY, 14) + (Math.random() - 0.5) * 4,
+            nz: remap(n.z || 0, minZ, maxZ, 14) + (Math.random() - 0.5) * 5,
         }));
 
         // Scene
@@ -196,7 +250,7 @@
 
         // ── Camera state ──────────────────────────────────────────────────
         const cam = {
-            theta: 0, phi: Math.PI / 2, radius: 18,
+            theta: 0, phi: Math.PI / 2, radius: 28,  // was 18
             panX: 0,  panY: 0,
             autoRotate: true,
             dragging: false, button: 0, px: 0, py: 0
@@ -249,21 +303,27 @@
         const nodeObjects = [];
         const nodeMap     = {};
 
-        data.nodes.forEach(node => {
+        const pulseRings = [];
+
+        data.nodes.forEach((node, i) => {
             const sphere = new THREE.Mesh(
                 new THREE.SphereGeometry(0.75, 32, 32),
                 new THREE.MeshStandardMaterial({
-                    color: getColor(node.type), metalness:0.3, roughness:0.25,
-                    emissive: getColor(node.type), emissiveIntensity: 0.45
+                    map: makeNodeTexture(getColor(node.type)),
+                    color: getColor(node.type),
+                    metalness: 0.2,
+                    roughness: 0.65,
+                    emissive: getColor(node.type),
+                    emissiveIntensity: 0.3
                 })
             );
             sphere.position.set(node.nx, node.ny, node.nz);
-            sphere.userData = node;
+            sphere.userData = { ...node, index: i };
             nodeObjects.push(sphere);
             scene.add(sphere);
             nodeMap[node.id] = sphere.position.clone();
 
-            // Glow ring
+            // Static glow ring
             const ring = new THREE.Mesh(
                 new THREE.RingGeometry(0.9, 1.05, 32),
                 new THREE.MeshBasicMaterial({ color: getColor(node.type), side:THREE.DoubleSide, transparent:true, opacity:0.35 })
@@ -271,6 +331,38 @@
             ring.position.copy(sphere.position);
             ring.lookAt(camera.position);
             scene.add(ring);
+
+            // Animated pulse ring — expands and fades
+            const pulseRing = new THREE.Mesh(
+                new THREE.RingGeometry(0.78, 0.95, 32),
+                new THREE.MeshBasicMaterial({
+                    color: getColor(node.type), side: THREE.DoubleSide,
+                    transparent: true, opacity: 0.6
+                })
+            );
+            pulseRing.position.copy(sphere.position);
+            pulseRing.lookAt(camera.position);
+            pulseRing.userData.phase = i * (Math.PI * 2 / data.nodes.length); // stagger
+            scene.add(pulseRing);
+            pulseRings.push(pulseRing);
+
+            // START NODE — first node gets a bright double-halo crown
+            if (i === 0) {
+                sphere.scale.set(1.3, 1.3, 1.3);
+
+                [{ r1:1.15, r2:1.28, op:0.6 }, { r1:1.4, r2:1.48, op:0.25 }].forEach(h => {
+                    const halo = new THREE.Mesh(
+                        new THREE.RingGeometry(h.r1, h.r2, 32),
+                        new THREE.MeshBasicMaterial({
+                            color: 0xffffff, side: THREE.DoubleSide,
+                            transparent: true, opacity: h.op
+                        })
+                    );
+                    halo.position.copy(sphere.position);
+                    halo.lookAt(camera.position);
+                    scene.add(halo);
+                });
+            }
         });
 
         data.edges.forEach(edge => {
@@ -309,11 +401,11 @@
                 tooltip.style.left = (e.clientX + 14) + "px";
                 tooltip.style.top  = (e.clientY - 10) + "px";
                 el.style.cursor = "pointer";
-                hits[0].object.material.emissiveIntensity = 0.9;
+                hits[0].object.material.emissiveIntensity = 0.8;
             } else {
                 tooltip.style.display = "none";
                 el.style.cursor = "default";
-                nodeObjects.forEach(o => o.material.emissiveIntensity = 0.45);
+                nodeObjects.forEach(o => o.material.emissiveIntensity = 0.3);
             }
         });
 
@@ -326,7 +418,7 @@
             if (hits.length === 0) return;
             const node = hits[0].object.userData;
 
-            pType.textContent  = node.type;
+            pType.textContent  = node.type + (node.index === 0 ? " · START" : "");
             pLabel.textContent = node.label;
             pDesc.textContent  = node.description;
 
@@ -337,7 +429,31 @@
 
             pRes.innerHTML = "";
             const resources = Array.isArray(node.resources) ? node.resources : [];
-            resources.forEach(r => { const li = document.createElement("li"); li.textContent = r; pRes.appendChild(li); });
+            resources.forEach(r => {
+                const li = document.createElement("li");
+                // Check if it looks like a URL
+                const isUrl = r.match(/https?:\/\//i);
+                if (isUrl) {
+                    const a = document.createElement("a");
+                    a.href = r; a.target = "_blank"; a.rel = "noopener";
+                    a.textContent = r;
+                    a.style.cssText = "color:#4f8eff;text-decoration:none;word-break:break-all;";
+                    a.onmouseover = () => a.style.textDecoration = "underline";
+                    a.onmouseout  = () => a.style.textDecoration = "none";
+                    li.appendChild(a);
+                } else {
+                    // Not a raw URL — still make it searchable on click
+                    const a = document.createElement("a");
+                    a.href = `https://www.google.com/search?q=${encodeURIComponent(r)}`;
+                    a.target = "_blank"; a.rel = "noopener";
+                    a.textContent = r;
+                    a.style.cssText = "color:#4f8eff;text-decoration:none;cursor:pointer;";
+                    a.onmouseover = () => a.style.textDecoration = "underline";
+                    a.onmouseout  = () => a.style.textDecoration = "none";
+                    li.appendChild(a);
+                }
+                pRes.appendChild(li);
+            });
             pResSec.style.display = resources.length ? "block" : "none";
 
             panel.style.display = "block";
@@ -354,8 +470,23 @@
         function animate() {
             requestAnimationFrame(animate);
             if (cam.autoRotate) { cam.theta += 0.003; updateCamera(); }
+
             const t = Date.now() * 0.001;
-            nodeObjects.forEach((obj, i) => { obj.position.y += Math.sin(t + i * 1.3) * 0.002; });
+
+            // Bob nodes up/down
+            nodeObjects.forEach((obj, i) => {
+                obj.position.y += Math.sin(t * 1.1 + i * 1.3) * 0.002;
+            });
+
+            // Pulse rings — expand scale and fade opacity in a loop
+            pulseRings.forEach((ring, i) => {
+                const cycle = (t * 0.8 + ring.userData.phase) % (Math.PI * 2);
+                const progress = cycle / (Math.PI * 2); // 0 → 1
+                const s = 1 + progress * 1.4;           // scale 1x → 2.4x
+                ring.scale.set(s, s, 1);
+                ring.material.opacity = 0.55 * (1 - progress); // fade out
+            });
+
             renderer.render(scene, camera);
         }
         animate();

@@ -38,12 +38,16 @@ def chat():
         # call AI with FULL history
         completion = client.chat.completions.create(
 
-            model="openai/gpt-oss-120b:free:online",
+            model="openai/gpt-oss-120b:free",
             messages=[
                 {
                     "role": "system",
                     "content": """
                         You are an expert learning path generator.
+                        - DO NOT search the web. Use your existing knowledge for resources.
+                        - Keep resource strings as clean names or URLs only, never mixed.
+                        - Output ONLY the raw JSON object. No backticks, no markdown, no code blocks.
+                        - The very first character of your response must be { and the very last must be }.
 
                         Your behavior has TWO phases:
 
@@ -183,6 +187,9 @@ def chat():
     except Exception as e:
         print("ERROR:", e)
         return jsonify({"error": str(e)}), 500
+    except Exception as parse_err:
+        print("JSON PARSE FAILED:", parse_err)
+        return jsonify({"type": "text", "reply": reply})
 
     
 
